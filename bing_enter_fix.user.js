@@ -1,12 +1,12 @@
 // ==UserScript==
 // @name         bing copilot enter fix(ime) for safari
 // @namespace    https://github.com/take-takashi/userscript
-// @version      0.1.1
+// @version      0.1.2
 // @description  bing copilotサイトでsafari使用時にIME変換確定時のEnterでもチャットを送信してしまうのを防ぐ。
 // @author       kaerunrun
 // @match        https://www.bing.com/chat*
 // @icon         https://github.com/take-takashi/userscript/blob/4be5be5d621efda11e4ee5059d195d4f9c852bc4/icon/OIG3.9lM7OE1YdsLjcfwN43yA.jpeg?raw=true
-// @updateURL    
+// @updateURL    https://raw.githubusercontent.com/take-takashi/userscript/main/bing_enter_fix.user.js
 // @grant        none
 // @noframes
 // ==/UserScript==
