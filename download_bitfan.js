@@ -24,11 +24,9 @@
         // URLからクエリパラメータを除いたファイル名を取得
         const fileName = (audioSrc.split('?')[0].split('/').pop()) || 'audio.mp3';
 
-        // ダウンロード用のaタグ（ボタン）を作成
-        const downloadButton = document.createElement('a');
+        // ダウンロード用のボタンを作成
+        const downloadButton = document.createElement('button');
         downloadButton.id = BUTTON_ID;
-        downloadButton.href = audioSrc;
-        downloadButton.download = fileName;
         downloadButton.textContent = '音声をダウンロード';
 
         // ボタンのスタイルを設定
@@ -47,6 +45,49 @@
             fontSize: '14px',
             boxShadow: '0 4px 8px rgba(0,0,0,0.2)'
         });
+
+        // ボタンクリック時の動作
+        downloadButton.addEventListener('click', () => {
+            downloadButton.textContent = 'ダウンロード中...';
+            downloadButton.disabled = true;
+
+            fetch(audioSrc)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.blob();
+                })
+                .then(blob => {
+                    // BlobからURLを生成
+                    const url = window.URL.createObjectURL(blob);
+                    // 一時的なaタグを作成してダウンロードを実行
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = fileName;
+                    document.body.appendChild(a);
+                    a.click();
+                    // 後処理
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+
+                    downloadButton.textContent = 'ダウンロード完了';
+                    setTimeout(() => {
+                        downloadButton.textContent = '音声をダウンロード';
+                        downloadButton.disabled = false;
+                    }, 2000);
+                })
+                .catch(e => {
+                    console.error('[Downloader] Download failed:', e);
+                    downloadButton.textContent = 'ダウンロード失敗';
+                     setTimeout(() => {
+                        downloadButton.textContent = '音声をダウンロード';
+                        downloadButton.disabled = false;
+                    }, 3000);
+                });
+        });
+
 
         // ボタンをページに追加
         document.body.appendChild(downloadButton);
