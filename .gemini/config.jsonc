@@ -1,0 +1,12 @@
+{
+    "language": "ja",
+    "model": "gemini-2.5-pro",
+    "project_overview": "GreaseMonkeyやUserscriptsで動かすuserscriptを管理する。",
+    // 各プロジェクト（各luaファイル）の説明を記載する。
+    "project_descriptions": {},
+    "todos": {
+        "download_ij-matome": [
+            "ij-matome.id のページから音声をダウンロードするボタンを提供する。"
+        ]
+    }
+}
