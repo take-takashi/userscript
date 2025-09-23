@@ -16,15 +16,74 @@
 
     const BUTTON_ID = 'gemini-audio-download-button';
 
+    const sanitizeFileName = (rawName, fallback = 'audio') => {
+        if (!rawName) {
+            return fallback;
+        }
+
+        // 半角->全角変換マップ
+        const FULL_WIDTH_MAP = {
+            '\\': '＼',
+            '/': '／',
+            ':': '：',
+            '*': '＊',
+            '?': '？',
+            '"': '”',
+            '<': '＜',
+            '>': '＞',
+            '|': '｜'
+        };
+
+        // Windowsなどで使えない文字を全角文字に置き換え
+        const sanitized = rawName
+            .replace(/[\\/:*?"<>|]/g, ch => FULL_WIDTH_MAP[ch] || '＿')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        return sanitized || fallback;
+    };
+
+    const buildDownloadFileName = (defaultFileName, categoryLabel = '') => {
+        const defaultExt = defaultFileName.includes('.')
+            ? defaultFileName.substring(defaultFileName.lastIndexOf('.'))
+            : '.mp3';
+
+        const pageTitle = sanitizeFileName(document.title, '');
+        if (pageTitle) {
+            const suffix = categoryLabel ? ` (${categoryLabel})` : '';
+            return `${pageTitle}${suffix}${defaultExt}`;
+        }
+
+        if (categoryLabel) {
+            return `${categoryLabel}${defaultExt}`;
+        }
+
+        return defaultFileName || `audio${defaultExt}`;
+    };
+
+    const extractCategoryLabel = (doc) => {
+        const categoryAnchor = doc.querySelector('.p-clubArticle__status__category a');
+        if (categoryAnchor) {
+            const labelText = sanitizeFileName(categoryAnchor.textContent, '');
+            if (labelText) {
+                return labelText;
+            }
+        }
+
+        return '';
+    };
+
     // ダウンロードボタンを作成・表示する関数
-    const createDownloadButton = (audioSrc) => {
+    const createDownloadButton = (audioSrc, options = {}) => {
         // 既にボタンが存在する場合は何もしない
         if (document.getElementById(BUTTON_ID)) {
             return;
         }
 
         // URLからクエリパラメータを除いたファイル名を取得
-        const fileName = (audioSrc.split('?')[0].split('/').pop()) || 'audio.mp3';
+        const rawFileName = (audioSrc.split('?')[0].split('/').pop()) || 'audio.mp3';
+        const categoryLabel = options.categoryLabel || '';
+        const fileName = buildDownloadFileName(rawFileName, categoryLabel);
 
         // ダウンロード用のボタンを作成
         const downloadButton = document.createElement('button');
@@ -83,7 +142,7 @@
                 .catch(e => {
                     console.error('[Downloader] Download failed:', e);
                     downloadButton.textContent = 'ダウンロード失敗';
-                     setTimeout(() => {
+                    setTimeout(() => {
                         downloadButton.textContent = '音声をダウンロード';
                         downloadButton.disabled = false;
                     }, 3000);
@@ -110,7 +169,8 @@
                 const source = iframeDoc.querySelector('audio source');
 
                 if (source && source.src) {
-                    createDownloadButton(source.src);
+                    const categoryLabel = extractCategoryLabel(iframeDoc);
+                    createDownloadButton(source.src, { categoryLabel });
                 }
             } catch (e) {
                 console.error('[Downloader] Error accessing iframe content:', e);
