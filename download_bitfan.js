@@ -43,38 +43,8 @@
         return sanitized || fallback;
     };
 
-    const buildDownloadFileName = (defaultFileName, categoryLabel = '') => {
-        const defaultExt = defaultFileName.includes('.')
-            ? defaultFileName.substring(defaultFileName.lastIndexOf('.'))
-            : '.mp3';
-
-        const pageTitle = sanitizeFileName(document.title, '');
-        if (pageTitle) {
-            const suffix = categoryLabel ? ` (${categoryLabel})` : '';
-            return `${pageTitle}${suffix}${defaultExt}`;
-        }
-
-        if (categoryLabel) {
-            return `${categoryLabel}${defaultExt}`;
-        }
-
-        return defaultFileName || `audio${defaultExt}`;
-    };
-
-    const extractCategoryLabel = (doc) => {
-        const categoryAnchor = doc.querySelector('.p-clubArticle__status__category a');
-        if (categoryAnchor) {
-            const labelText = sanitizeFileName(categoryAnchor.textContent, '');
-            if (labelText) {
-                return labelText;
-            }
-        }
-
-        return '';
-    };
-
     // ダウンロードボタンを作成・表示する関数
-    const createDownloadButton = (audioSrc, options = {}) => {
+    const createDownloadButton = (audioSrc) => {
         // 既にボタンが存在する場合は何もしない
         if (document.getElementById(BUTTON_ID)) {
             return;
@@ -82,8 +52,54 @@
 
         // URLからクエリパラメータを除いたファイル名を取得
         const rawFileName = (audioSrc.split('?')[0].split('/').pop()) || 'audio.mp3';
-        const categoryLabel = options.categoryLabel || '';
-        const fileName = buildDownloadFileName(rawFileName, categoryLabel);
+
+        // 拡張子を取得
+        const defaultExt = rawFileName.includes('.')
+            ? rawFileName.substring(rawFileName.lastIndexOf('.'))
+            : '.mp3';
+
+        // サイトのタイトルを取得
+        const siteNameContent = document.querySelector('meta[property="og:site_name"]')?.getAttribute('content');
+        const siteName = sanitizeFileName(siteNameContent, '');
+        // console.log("site name = ", siteName);
+
+        // ページのタイトルを取得
+        const pageTitleContent = document.querySelector('meta[property="og:title"]')?.getAttribute('content');
+        const pageTitle = sanitizeFileName(pageTitleContent, '');
+        // console.log("page title = ", pageTitle);
+
+        // ページのカテゴリを取得
+        const categoryNameContent = document.querySelector('.p-clubArticle__status__category a')?.textContent;
+        const categoryName = sanitizeFileName(categoryNameContent, '');
+        // console.log("category name = ", categoryName);
+
+        // カテゴリに「アフタートーク」が含まれる時に放送日を入れる処理
+        let airDate = '';
+        if (categoryName.includes('アフタートーク')) {
+            const airDateContent = document.querySelector('.p-clubArticle__summary .p-clubArticle__summary__content .p-clubArticle__summary__date')?.textContent;
+            // 日付が「2025/09/17 18:00」形式のため、「2025年09月17日」に変換
+            const date = new Date(airDateContent);
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, "0");
+            const d = String(date.getDate()).padStart(2, "0");
+
+            airDate = `${y}年${m}月${d}日放送`;
+            // console.log("air date = ", airDate);
+        }
+
+        // ファイル名の分岐分岐（「アフタートーク」の時は放送日を入れる）
+        const titleName = (airDate)
+            ? siteName + '_' + categoryName + '_' + airDate + '_' + pageTitle + defaultExt
+            : siteName + '_' + categoryName + '_' + pageTitle + defaultExt;
+
+        // console.log("title name = ", titleName);
+
+        const fileName = sanitizeFileName(titleName);
+
+        // # TODO: 画像のファイル名を定義（同名）してダウンロードできるようにしたい
+
+        // # TODO: ダウンロードボタンをLoding...の状態であらかじめ表示しておきたい
+
 
         // ダウンロード用のボタンを作成
         const downloadButton = document.createElement('button');
@@ -169,8 +185,7 @@
                 const source = iframeDoc.querySelector('audio source');
 
                 if (source && source.src) {
-                    const categoryLabel = extractCategoryLabel(iframeDoc);
-                    createDownloadButton(source.src, { categoryLabel });
+                    createDownloadButton(source.src);
                 }
             } catch (e) {
                 console.error('[Downloader] Error accessing iframe content:', e);
