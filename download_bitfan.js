@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         Bitfan Audio Downloader
 // @namespace    https://github.com/take-takashi/userscript
-// @version      0.0.3
+// @version      0.0.4
 // @description  Adds a download button for audio on ij-matome.bitfan.id
 // @author       Gemini
 // @match        https://ij-matome.bitfan.id/*
-// @grant        none
+// @grant        GM_download
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=bitfan.id
 // @updateURL    https://raw.githubusercontent.com/take-takashi/userscript/main/download_bitfan.js
 // @downloadURL  https://raw.githubusercontent.com/take-takashi/userscript/main/download_bitfan.js
@@ -158,43 +158,88 @@
         };
     };
 
-    const startDownload = ({ audioSrc, fileName }) => {
+    const startDownload = async ({ audioSrc, fileName }) => {
         const button = ensureDownloadButton();
         button.textContent = 'ダウンロード中...';
         button.disabled = true;
 
-        fetch(audioSrc)
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                return response.blob();
-            })
-            .then(blob => {
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.style.display = 'none';
-                a.href = url;
-                a.download = fileName;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
+        // Tampermonkey では GM_download を優先。未対応（Greasemonkey など）なら従来の fetch+Blob にフォールバック
+        const hasGMDownload = (typeof GM_download === 'function');
 
-                button.textContent = 'ダウンロード完了';
-                setTimeout(() => {
-                    button.textContent = '音声をダウンロード';
-                    button.disabled = false;
-                }, 2000);
-            })
-            .catch(e => {
-                console.error('[Downloader] Download failed:', e);
-                button.textContent = 'ダウンロード失敗';
-                setTimeout(() => {
-                    button.textContent = '音声をダウンロード';
-                    button.disabled = false;
-                }, 3000);
-            });
+        if (hasGMDownload) {
+            try {
+                GM_download({
+                    url: audioSrc,
+                    name: fileName,
+                    onprogress: (e) => {
+                        if (e && typeof e.loaded === 'number' && typeof e.total === 'number' && e.total > 0) {
+                            const pct = Math.floor((e.loaded / e.total) * 100);
+                            button.textContent = `ダウンロード中... ${pct}%`;
+                        }
+                    },
+                    onload: () => {
+                        console.log('[Downloader] GM_download completed');
+                        button.textContent = 'ダウンロード完了';
+                        setTimeout(() => {
+                            button.textContent = '音声をダウンロード';
+                            button.disabled = false;
+                        }, 2000);
+                    },
+                    onerror: (e) => {
+                        console.error('[Downloader] GM_download error:', e);
+                        button.textContent = 'ダウンロード失敗';
+                        setTimeout(() => {
+                            button.textContent = '音声をダウンロード';
+                            button.disabled = false;
+                        }, 3000);
+                    },
+                    ontimeout: () => {
+                        console.error('[Downloader] GM_download timeout');
+                        button.textContent = 'タイムアウト';
+                        setTimeout(() => {
+                            button.textContent = '音声をダウンロード';
+                            button.disabled = false;
+                        }, 3000);
+                    }
+                });
+                return; // GM_download を使えた場合はここで終了
+            } catch (e) {
+                console.warn('[Downloader] GM_download path failed, falling back:', e);
+                // 失敗時はフォールバック継続
+            }
+        }
+
+        // フォールバック：fetch + Blob + a.click()（従来挙動を維持）
+        try {
+            const response = await fetch(audioSrc);
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+            // ここで分かるのは「取得が完了し保存処理を開始した」まで
+            button.textContent = '取得完了（保存処理を実行）';
+            setTimeout(() => {
+                button.textContent = '音声をダウンロード';
+                button.disabled = false;
+            }, 2000);
+        } catch (e) {
+            console.error('[Downloader] Fallback download failed:', e);
+            button.textContent = 'ダウンロード失敗';
+            setTimeout(() => {
+                button.textContent = '音声をダウンロード';
+                button.disabled = false;
+            }, 3000);
+        }
     };
 
     const activateDownloadButton = (audioSrc) => {
