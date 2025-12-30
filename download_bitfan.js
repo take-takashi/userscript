@@ -180,10 +180,11 @@
                     onload: () => {
                         console.log('[Downloader] GM_download completed');
                         button.textContent = 'ダウンロード完了';
-                        setTimeout(() => {
-                            button.textContent = '音声をダウンロード';
-                            button.disabled = false;
-                        }, 2000);
+                        // 2025.12.31 ダウンロード完了後、ボタンの名称を変えないように変更
+                        // setTimeout(() => {
+                        //     button.textContent = '音声をダウンロード';
+                        //     button.disabled = false;
+                        // }, 2000);
                     },
                     onerror: (e) => {
                         console.error('[Downloader] GM_download error:', e);
