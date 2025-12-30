@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bitfan Audio Downloader
 // @namespace    https://github.com/take-takashi/userscript
-// @version      0.0.4
+// @version      0.0.5
 // @description  Adds a download button for audio on ij-matome.bitfan.id
 // @author       Gemini
 // @match        https://ij-matome.bitfan.id/*
