@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         YouTube Auto Landscape for iPhone Safari
 // @namespace    https://github.com/take-takashi/userscript
-// @version      0.1.0
+// @version      0.2.0
 // @description  YouTubeの再生中に端末の横持ちを検知し、動画だけを回転させる実験版。
 // @match        https://www.youtube.com/*
 // @match        https://m.youtube.com/*
 // @match        https://youtube.com/*
 // @run-at       document-end
-// @inject-into  page
+// @inject-into  content
 // @grant        none
 // @noframes
 // ==/UserScript==
@@ -21,8 +21,9 @@
     const host = document.createElement('div');
     host.id = ID;
     const ui = host.attachShadow({ mode: 'open' });
-    ui.innerHTML = `
-        <style>
+    // HTML文字列を挿入せず、ページのTrusted Types制限下でも案内を作成する。
+    const style = document.createElement('style');
+    style.textContent = `
             :host {
                 all: initial;
                 position: fixed;
@@ -34,30 +35,19 @@
                 color: white;
             }
             :host([hidden]) { display: none; }
-            button {
-                min-height: 44px;
-                padding: 8px 12px;
-                border: 1px solid #888;
-                border-radius: 10px;
-                background: #202020;
-                color: white;
-                font: inherit;
-                touch-action: manipulation;
-            }
-            button:disabled { opacity: .6; }
             p { margin: 4px 0 0; padding: 4px 8px; background: #202020; border-radius: 6px; }
-            p:empty { display: none; }
-        </style>
-        <button type="button" aria-pressed="false">↻ 回転を有効化</button>
-        <p role="status" aria-live="polite"></p>`;
-    const button = ui.querySelector('button');
-    const status = ui.querySelector('p');
+            p:empty { display: none; }`;
+    const status = document.createElement('p');
+    status.setAttribute('role', 'status');
+    status.setAttribute('aria-live', 'polite');
+    ui.append(style, status);
     document.documentElement.append(host);
 
     const styles = new Map();
     const attributes = new Map();
     let enabled = false;
     let pending = false;
+    let permissionState = 'idle';
     let requestId = 0;
     let enabledAt = 0;
     let lastMotion = 0;
@@ -75,12 +65,7 @@
 
     function message(text) {
         if (status.textContent !== text) status.textContent = text;
-    }
-
-    function updateButton() {
-        button.disabled = pending;
-        button.textContent = enabled ? '回転を無効化' : '↻ 回転を有効化';
-        button.setAttribute('aria-pressed', String(enabled));
+        host.hidden = !isWatchPage() || text === '';
     }
 
     // 元の値を保存し、このスクリプトが最後に設定した値だけを戻す。
@@ -181,7 +166,8 @@
 
     function reconcile() {
         const watch = isWatchPage();
-        host.hidden = !watch;
+        host.hidden = !watch || status.textContent === '';
+        if (watch && permissionState === 'idle') startSensors(false);
         const fresh = lastMotion > 0 && performance.now() - lastMotion < 1500;
         if (enabled && !fresh && performance.now() - enabledAt > 3000) {
             message('センサーの情報を取得できません。許可とSafariの設定を確認してください。');
@@ -219,10 +205,13 @@
         const y = Math.abs(filtered.y);
         // 最初の縦持ちで軸の符号を合わせ、実装による重力の符号の違いを吸収する。
         if (!polarity) {
-            if (y < 5 || y < x * 1.4) return;
+            if (y < 5 || y < x * 1.4) {
+                message('端末の上を上にして、縦向きに立てて持ってください。');
+                return;
+            }
             polarity = Math.sign(filtered.y);
         }
-        message('動画の再生中に端末を横に倒してください。');
+        message('');
         let next = null;
         if (x >= 4.5 && x > y * 1.4) next = filtered.x * polarity > 0 ? 90 : -90;
         else if (y >= 4.5 && y > x * 1.4) next = 0;
@@ -248,52 +237,64 @@
         restore();
     }
 
-    function disable() {
+    function stopSensors() {
         requestId += 1;
         pending = false;
         enabled = false;
+        permissionState = 'idle';
         polarity = 0;
         window.removeEventListener('devicemotion', onMotion);
         resetMotion();
         message('');
-        updateButton();
     }
 
-    button.addEventListener('click', async () => {
-        if (enabled) {
-            disable();
-            return;
-        }
-        if (pending) return;
+    async function startSensors(fromGesture) {
+        if (enabled || pending || !isWatchPage() || document.hidden ||
+            permissionState === 'denied' || permissionState === 'unsupported') return;
         if (!window.isSecureContext || typeof window.DeviceMotionEvent === 'undefined') {
+            permissionState = 'unsupported';
             message('この環境では端末の傾きセンサーを利用できません。');
             return;
         }
         const currentRequest = ++requestId;
         pending = true;
-        updateButton();
+        permissionState = 'pending';
         try {
-            // ユーザーのタップと同じ処理で許可を要求する。
+            // 許可済みなら自動で開始する。初回に操作が必要ならページ上のタップを待つ。
             const permission = typeof DeviceMotionEvent.requestPermission === 'function'
                 ? await DeviceMotionEvent.requestPermission() : 'granted';
-            if (currentRequest !== requestId || !isWatchPage()) return;
+            if (currentRequest !== requestId) return;
+            if (!isWatchPage()) {
+                permissionState = 'idle';
+                return;
+            }
             if (permission !== 'granted') {
+                permissionState = 'denied';
                 message('センサーの使用が許可されませんでした。Safariのサイト設定を確認してください。');
                 return;
             }
             enabled = true;
+            permissionState = 'granted';
             enabledAt = performance.now();
             message('端末の上を上にして、縦向きに立てて持ってください。');
             window.addEventListener('devicemotion', onMotion, { passive: true });
         } catch (error) {
-            if (currentRequest === requestId) message('センサーの許可を取得できませんでした。ページを再読み込みして試してください。');
-        } finally {
-            if (currentRequest === requestId) {
-                pending = false;
-                updateButton();
+            if (currentRequest !== requestId) return;
+            if (!fromGesture && error.name === 'NotAllowedError') {
+                permissionState = 'gesture';
+                message('初回は動画をタップして、センサーの使用を許可してください。');
+            } else {
+                permissionState = 'denied';
+                message('センサーの許可を取得できませんでした。ページを再読み込みして試してください。');
             }
+        } finally {
+            if (currentRequest === requestId) pending = false;
         }
-    });
+    }
+
+    function onPageTap(event) {
+        if (event.isTrusted && permissionState === 'gesture') startSensors(true);
+    }
 
     for (const name of ['play', 'pause', 'ended', 'fullscreenchange', 'webkitbeginfullscreen',
         'webkitendfullscreen', 'enterpictureinpicture', 'leavepictureinpicture', 'webkitpresentationmodechanged']) {
@@ -301,7 +302,11 @@
     }
     for (const name of ['popstate', 'yt-navigate-finish']) window.addEventListener(name, reconcile);
     document.addEventListener('visibilitychange', resetMotion);
-    window.addEventListener('pagehide', disable);
+    window.addEventListener('pagehide', stopSensors);
+    window.addEventListener('pageshow', reconcile);
+    // 動画の通常のタップで初回の許可を求め、追加のON操作は要求しない。
+    document.addEventListener('click', onPageTap, true);
+    document.addEventListener('pointerup', onPageTap, true);
     window.addEventListener('resize', reconcile);
     window.visualViewport?.addEventListener('resize', reconcile);
     window.visualViewport?.addEventListener('scroll', fitVideo);
